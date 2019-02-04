@@ -80,6 +80,21 @@ public:
    *        The callback may be invoked either before or after find() returns
    */
   void
+  setAccessStrict(const Interest& interest);
+  void
+  setTrustValue();
+  void
+  setArriveTimeProposal1(const Interest& interest);
+  void
+  setArriveTimeProposal2(const Interest& interest);
+  void
+  measureResult(const Interest& interest);
+  void
+  measureResultProposal1(const Interest& interest);
+  void
+  measureResultProposal2(const Interest& interest);
+
+  void
   find(const Interest& interest,
        const HitCallback& hitCallback,
        const MissCallback& missCallback);

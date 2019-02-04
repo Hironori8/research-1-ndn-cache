@@ -1,0 +1,836 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<title>~/ndnSIM/ns-3/src/ndnSIM/NFD/daemon/table/printer.cpp.html</title>
+<meta name="Generator" content="Vim/8.0">
+<meta name="plugin-version" content="vim7.4_v2">
+<meta name="syntax" content="cpp">
+<meta name="settings" content="use_css,pre_wrap,no_foldcolumn,expand_tabs,prevent_copy=">
+<meta name="colorscheme" content="none">
+<style type="text/css">
+<!--
+pre { white-space: pre-wrap; font-family: monospace; color: #d0d0d0; background-color: #121212; }
+body { font-family: monospace; color: #d0d0d0; background-color: #121212; }
+* { font-size: 1em; }
+.Todo { color: #000000; background-color: #ffff00; padding-bottom: 1px; }
+.String { color: #afaf87; }
+.Number { color: #af5fff; }
+.Boolean { color: #af5fff; }
+.Float { color: #af5fff; }
+.StorageClass { color: #ff8700; }
+.Structure { color: #5fd7ff; }
+.SpecialChar { color: #d7005f; font-weight: bold; }
+.Comment { color: #0000c0; }
+.Constant { color: #c00000; }
+.Statement { color: #af5f00; }
+.PreProc { color: #c000c0; }
+.Type { color: #008000; }
+.Conditional { color: #d7005f; font-weight: bold; }
+.Repeat { color: #d7005f; font-weight: bold; }
+.Macro { color: #d7ffaf; }
+-->
+</style>
+
+<script type='text/javascript'>
+<!--
+
+-->
+</script>
+</head>
+<body>
+<pre id='vimCodeElement'>
+<span class="Comment">/*</span><span class="Comment"> -*- Mode:C++; c-file-style:&quot;gnu&quot;; indent-tabs-mode:nil; -*- </span><span class="Comment">*/</span>
+<span class="Comment">/*</span>
+<span class="Comment"> * Copyright (c) 2014-2018,  Regents of the University of California,</span>
+<span class="Comment"> *                           Arizona Board of Regents,</span>
+<span class="Comment"> *                           Colorado State University,</span>
+<span class="Comment"> *                           University Pierre &amp; Marie Curie, Sorbonne University,</span>
+<span class="Comment"> *                           Washington University in St. Louis,</span>
+<span class="Comment"> *                           Beijing Institute of Technology,</span>
+<span class="Comment"> *                           The University of Memphis.</span>
+<span class="Comment"> *</span>
+<span class="Comment"> * This file is part of NFD (Named Data Networking Forwarding Daemon).</span>
+<span class="Comment"> * See AUTHORS.md for complete list of NFD authors and contributors.</span>
+<span class="Comment"> *</span>
+<span class="Comment"> * NFD is free software: you can redistribute it and/or modify it under the terms</span>
+<span class="Comment"> * of the GNU General Public License as published by the Free Software Foundation,</span>
+<span class="Comment"> * either version 3 of the License, or (at your option) any later version.</span>
+<span class="Comment"> *</span>
+<span class="Comment"> * NFD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;</span>
+<span class="Comment"> * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR</span>
+<span class="Comment"> * PURPOSE.  See the GNU General Public License for more details.</span>
+<span class="Comment"> *</span>
+<span class="Comment"> * You should have received a copy of the GNU General Public License along with</span>
+<span class="Comment"> * NFD, e.g., in COPYING.md file.  If not, see &lt;<a href="http://www.gnu.org/licenses/">http://www.gnu.org/licenses/</a>&gt;.</span>
+<span class="Comment"> </span><span class="Comment">*/</span>
+
+<span class="PreProc">#include </span><span class="String">&quot;cs.hpp&quot;</span>
+<span class="PreProc">#include </span><span class="String">&quot;core/algorithm.hpp&quot;</span>
+<span class="PreProc">#include </span><span class="String">&quot;core/logger.hpp&quot;</span>
+<span class="PreProc">#include </span><span class="String">&quot;ns3/simulator.h&quot;</span>
+<span class="PreProc">#include </span><span class="String">&lt;ndn-cxx/lp/tags.hpp&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;ndn-cxx/util/concepts.hpp&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;ndn-cxx/security/pib/key.hpp&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;ndn-cxx/security/verification-helpers.hpp&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;iostream&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;fstream&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;ctime&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;cstdio&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;stdio.h&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;chrono&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;unordered_map&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;string&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;utility&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;memory&gt;</span>
+<span class="PreProc">#include </span><span class="String">&lt;cmath&gt;</span>
+
+<span class="Macro">#define IDENTITY_NAME </span><span class="String">&quot;NDNSERVER&quot;</span>
+<span class="Comment">//サーバから取ってきたことを証明</span>
+<span class="Macro">#define USER_NUM </span><span class="Number">10</span>
+<span class="Comment">//ユーザの総数</span>
+<span class="Macro">#define ACCESS_STRICT </span><span class="Float">0.01</span>
+<span class="Comment">//アクセス制限</span>
+<span class="Macro">#define TRUSTVALUE_INTERVAL </span><span class="Float">0.025</span>
+<span class="Comment">//信頼値の時間間隔</span>
+<span class="Macro">#define INTERVAL </span><span class="Float">1.0</span>
+<span class="Comment">//計測の時間間隔</span>
+<span class="Macro">#define DATASTRICT_INTERVAL </span><span class="Float">0.025</span>
+<span class="Comment">//データ制限の時間間隔</span>
+
+<span class="Structure">namespace</span> nfd {
+<span class="Structure">namespace</span> cs {
+
+<span class="Type">bool</span> setProposal1 = <span class="Boolean">true</span>;
+<span class="Comment">//提案方式１を実装するフラグ</span>
+<span class="Type">bool</span> setProposal2 = <span class="Boolean">false</span>;
+<span class="Comment">//提案方式２を実装するフラグ</span>
+<span class="Type">bool</span> AccessStrictSet1 = <span class="Boolean">true</span>;
+<span class="Comment">//アクセス制御を行うことを示すフラグ</span>
+<span class="Type">bool</span> AccessStrictSet2 = <span class="Boolean">true</span>;
+<span class="Comment">//信頼値をもとにしたアクセス制御を行うことを示すフラグ</span>
+<span class="Type">double</span> StartTime = ns3::Simulator::Now().GetSeconds();
+<span class="Comment">//シミュレーション開始時間</span>
+<span class="Type">double</span> StartTime_TrustValue =
+  ns3::Simulator::Now().GetSeconds();
+<span class="Comment">//信頼値計測開始時間</span>
+<span class="Type">double</span> StartTime_DataStrict =
+  ns3::Simulator::Now().GetSeconds();
+<span class="Comment">//アクセス制限開始時間</span>
+<span class="Type">int</span> CacheHit_Counter = <span class="Number">0</span>;
+<span class="Comment">//キャッシュヒットした回数</span>
+<span class="Type">int</span> CacheMiss_Counter = <span class="Number">0</span>;
+<span class="Comment">//キャッシュミスした回数</span>
+<span class="Type">int</span> Verification_Counter = <span class="Number">0</span>;
+<span class="Comment">//非保護エリアでキャッシュヒットした回数</span>
+<span class="Type">int</span> Verification_Attacker_Counter = <span class="Number">0</span>;
+<span class="Comment">//攻撃者の非保護エリアでキャッシュヒットした回数</span>
+<span class="Type">bool</span> DataArrive_First[USER_NUM] = {};
+<span class="Comment">//ユーザから最初のアクセスがあったことを示すフラグ</span>
+<span class="Type">double</span> ArriveTime = <span class="Number">0</span>;
+<span class="Comment">//データの到着時間</span>
+<span class="Type">double</span> Before_ArriveTime = <span class="Number">0</span>;
+<span class="Comment">//前の到着時間</span>
+std::set&lt;Name&gt;Miss_List;
+<span class="Comment">//1秒間あたりのキャッシュミスしたデータのリスト</span>
+
+<span class="Type">time_t</span> now = std::time(<span class="Constant">nullptr</span>);
+<span class="Type">char</span> DataSet[<span class="Number">60</span>];
+<span class="Type">char</span> TrustValue[<span class="Number">60</span>];
+<span class="Type">char</span> DataStrict[<span class="Number">60</span>];
+<span class="Type">char</span> Accuracy[<span class="Number">60</span>];
+<span class="Type">int</span> n1 = sprintf(DataSet
+    ,<span class="String">&quot;./Result/DataSet/DataSet_</span><span class="SpecialChar">%s</span><span class="String">.csv&quot;</span>,ctime(&amp;now));
+<span class="Type">int</span> n2 = sprintf(TrustValue
+    ,<span class="String">&quot;./Result/TrustValue/TrustValue_</span><span class="SpecialChar">%s</span><span class="String">.csv&quot;</span>,ctime(&amp;now));
+<span class="Type">int</span> n3 = sprintf(DataStrict
+    ,<span class="String">&quot;./Result/DataStrict/DataStrict_</span><span class="SpecialChar">%s</span><span class="String">.csv&quot;</span>,ctime(&amp;now));
+<span class="Type">int</span> n4 = sprintf(Accuracy
+    ,<span class="String">&quot;./Result/Accuracy/Accuracy_</span><span class="SpecialChar">%s</span><span class="String">.csv&quot;</span>,ctime(&amp;now));
+std::ofstream outputfile1(DataSet);
+std::ofstream outputfile2(TrustValue);
+std::ofstream outputfile3(DataStrict);
+std::ofstream outputfile4(Accuracy);
+<span class="Comment">//データセットは閾値などのデータ</span>
+
+
+<span class="Comment">//提案方式１で実装したもの</span>
+std::unordered_map&lt;<span class="Type">int</span>,<span class="Type">double</span>&gt;DataArriveTable;
+<span class="Statement">using</span> UserData = std::pair&lt;<span class="Type">int</span>,<span class="Type">double</span>&gt;;
+<span class="Comment">//ユーザのデータレートを記録するテーブル(ユーザIDと，到着した時間)を作成</span>
+std::set&lt;Name&gt; User_List[USER_NUM];
+<span class="Comment">//ユーザ１が要求したデータを格納するテーブル</span>
+
+<span class="Comment">//提案方式２で実装したもの</span>
+<span class="Type">int</span> User_Point[USER_NUM];
+<span class="Comment">//ユーザのポイントを格納しておくもの</span>
+std::set&lt;Name&gt; Result[USER_NUM];
+<span class="Comment">//共通するデータを格納するもの</span>
+std::unordered_map&lt;<span class="Type">int</span>,<span class="Type">double</span>&gt;User_TrustValue_Table;
+<span class="Statement">using</span> User_TrustValue_Data = std::pair&lt;<span class="Type">int</span>,<span class="Type">double</span>&gt;;
+<span class="Comment">//それぞれのユーザの信頼値を保存しておくテーブル（ユーザIDと，信頼値）</span>
+<span class="Type">double</span> DataRate[USER_NUM];
+<span class="Comment">//信頼値に基づいたデータ制限</span>
+<span class="Type">double</span> AccessStrict2[USER_NUM] = {};
+<span class="Comment">//それぞれのユーザのアクセス制限</span>
+<span class="Type">int</span> AccessCount[USER_NUM] = {};
+<span class="Comment">//それぞれのユーザのアクセス回数</span>
+<span class="Type">int</span> UserSend[USER_NUM] = {};
+<span class="Type">int</span> UserNotSend[USER_NUM] = {};
+<span class="Type">double</span> UserAccuracy[USER_NUM] = {};
+<span class="Type">bool</span> first = <span class="Boolean">true</span>;
+<span class="Comment">//計測期間で最初のアクセスかどうかのフラグ</span>
+
+NDN_CXX_ASSERT_FORWARD_ITERATOR(Cs::const_iterator);
+
+NFD_LOG_INIT(<span class="String">&quot;ContentStore&quot;</span>);
+
+
+unique_ptr&lt;Policy&gt;
+makeDefaultPolicy()
+{
+  <span class="StorageClass">const</span> std::string DEFAULT_POLICY = <span class="String">&quot;priority_fifo&quot;</span>;
+  <span class="Statement">return</span> Policy::create(DEFAULT_POLICY);
+}
+
+Cs::Cs(<span class="Type">size_t</span> nMaxPackets)
+  : m_shouldAdmit(<span class="Boolean">true</span>)
+    <span class="Comment">//falseの場合全てのデータは認められない</span>
+  , m_shouldServe(<span class="Boolean">true</span>)
+    <span class="Comment">//キャッシュの探索を許可</span>
+{
+  <span class="Statement">this</span>-&gt;setPolicyImpl(makeDefaultPolicy());
+  <span class="Comment">//csに交換方式をセット</span>
+  m_policy-&gt;setLimit(nMaxPackets);
+  <span class="Comment">//エントリーの限界数をセット</span>
+  m_key = m_keyChain.getPib().getIdentity(IDENTITY_NAME).getDefaultKey();
+}
+
+<span class="Type">void</span>
+Cs::insert(<span class="StorageClass">const</span> Data&amp; data, <span class="Type">bool</span> isUnsolicited)
+{
+  <span class="Conditional">if</span> (!m_shouldAdmit || m_policy-&gt;getLimit() == <span class="Number">0</span>) {
+    <span class="Comment">//全てのデータが認証されないか容量が０ならデータを挿入はしない</span>
+    <span class="Statement">return</span>;
+  }
+  NFD_LOG_DEBUG(<span class="String">&quot;insert &quot;</span> &lt;&lt; data.getName());
+  <span class="Comment">// recognize CachePolicy</span>
+  shared_ptr&lt;lp::CachePolicyTag&gt; tag = data.getTag&lt;lp::CachePolicyTag&gt;();
+  <span class="Comment">//データに付属しているキャッシュポリシータグを取得</span>
+  <span class="Conditional">if</span> (tag != <span class="Constant">nullptr</span>) {
+    <span class="Comment">//タグが付いてたら実行される</span>
+    lp::CachePolicyType policy = tag-&gt;get().getPolicy();
+    <span class="Comment">//キャッシュポリシータイプを取得</span>
+    <span class="Conditional">if</span> (policy == lp::CachePolicyType::NO_CACHE) {
+      <span class="Statement">return</span>;
+    }
+  }
+
+  iterator it;
+  <span class="Type">bool</span> isNewEntry = <span class="Boolean">false</span>;
+  std::tie(it, isNewEntry) = m_table.emplace(data.shared_from_this(), isUnsolicited);
+  <span class="Comment">//タプルの作成</span>
+  <span class="Comment">//isUnsolicitedは求めていたデータかどうかを真偽で判定するもの</span>
+  EntryImpl&amp; entry = <span class="Statement">const_cast</span>&lt;EntryImpl&amp;&gt;(*it);
+
+  entry.updateStaleTime();
+
+  <span class="Conditional">if</span> (!isNewEntry) {
+    <span class="Comment">//エントリーが存在したら</span>
+    <span class="Comment">// </span><span class="Todo">XXX</span><span class="Comment"> This doesn't forbid unsolicited Data from refreshing a solicited entry.</span>
+    <span class="Conditional">if</span> (entry.isUnsolicited() &amp;&amp; !isUnsolicited) {
+      entry.unsetUnsolicited();
+    }
+
+    m_policy-&gt;afterRefresh(it);
+    <span class="Comment">//invoked by CS after an existing entry is refreshed by same Data</span>
+  }
+  <span class="Conditional">else</span> {
+    m_policy-&gt;afterInsert(it);
+    <span class="Comment">//invoked by CS after a new entry is inserted</span>
+  }
+}
+
+<span class="Type">void</span>
+Cs::erase(<span class="StorageClass">const</span> Name&amp; prefix, <span class="Type">size_t</span> limit, <span class="StorageClass">const</span> AfterEraseCallback&amp; cb)
+{
+  BOOST_ASSERT(<span class="Statement">static_cast</span>&lt;<span class="Type">bool</span>&gt;(cb));
+
+  iterator first = m_table.lower_bound(prefix);
+  <span class="Comment">//指定された要素の値が現れる最初の位置のイテレータを取得する</span>
+  iterator last = m_table.end();
+  <span class="Conditional">if</span> (prefix.size() &gt; <span class="Number">0</span>) {
+    last = m_table.lower_bound(prefix.getSuccessor());
+  }
+
+  <span class="Type">size_t</span> nErased = <span class="Number">0</span>;
+  <span class="Repeat">while</span> (first != last &amp;&amp; nErased &lt; limit) {
+    m_policy-&gt;beforeErase(first);
+    first = m_table.erase(first);
+    ++nErased;
+  }
+
+  <span class="Conditional">if</span> (cb) {
+    cb(nErased);
+  }
+}
+
+<span class="Type">void</span>
+Cs::setAccessStrict(<span class="StorageClass">const</span> Interest&amp; interest)
+{
+  <span class="Conditional">if</span>(interest.getNonce() &lt; USER_NUM){
+    <span class="Comment">//ユーザIDのついた要求パケットの場合</span>
+
+    <span class="Type">auto</span> user_number = interest.getNonce();
+    <span class="Comment">//ユーザのIDを取得 </span>
+    <span class="Type">auto</span> itr_trust = User_TrustValue_Table.find(interest.getNonce());
+    <span class="Comment">//ユーザの信頼値を取得</span>
+    <span class="Conditional">if</span> (itr_trust == User_TrustValue_Table.end()) {
+      <span class="Comment">//もし初めてのアクセスの場合</span>
+      AccessStrict2[user_number] = <span class="Number">100</span>;
+      <span class="Comment">//最初のアクセス制限を0.01に設定</span>
+      AccessCount[user_number]++;
+      <span class="Comment">//そのIDのアクセスカウントをインクリメント</span>
+
+    }<span class="Conditional">else</span>{
+      <span class="Comment">//すでにアクセスがあった場合</span>
+      AccessCount[user_number]++;
+      <span class="Conditional">if</span>(ns3::Simulator::Now().GetSeconds()
+          - StartTime_DataStrict &gt; DATASTRICT_INTERVAL){
+        <span class="Repeat">for</span>(<span class="Type">auto</span> itr_trust = User_TrustValue_Table.begin();
+            itr_trust != User_TrustValue_Table.end();
+            ++itr_trust){
+          <span class="Conditional">if</span>(itr_trust-&gt;second &gt; <span class="Float">0.38</span>){
+            <span class="Comment">//もし信頼値が0.35を超えていた場合</span>
+            AccessStrict2[itr_trust-&gt;first] =
+            AccessStrict2[itr_trust-&gt;first] *<span class="Float">1.01</span>;
+            <span class="Comment">// AccessStrict2[itr_trust-&gt;first] *1.001;</span>
+            <span class="Comment">//アクセス許可数を増やす</span>
+          }<span class="Conditional">else</span> <span class="Conditional">if</span>(itr_trust-&gt;second &lt; <span class="Float">0.38</span>){
+            <span class="Comment">//信頼値が0.35より小さい場合</span>
+            AccessStrict2[itr_trust-&gt;first] = <span class="Number">10</span>;
+            <span class="Comment">//アクセス制限を0.01にリセット</span>
+          }
+        }
+      }
+    }
+  }
+  <span class="Conditional">if</span> ( (ns3::Simulator::Now().GetSeconds()-StartTime_DataStrict)
+      &gt; DATASTRICT_INTERVAL){
+    <span class="Repeat">for</span> (<span class="Type">int</span> i = <span class="Number">0</span>; i &lt; USER_NUM; i++) {
+      <span class="Conditional">if</span> (i == <span class="Number">0</span>) {
+        outputfile3 &lt;&lt; ns3::Simulator::Now().GetSeconds()
+          &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; AccessStrict2[i];
+      }<span class="Conditional">else</span> <span class="Conditional">if</span> (i == USER_NUM-<span class="Number">1</span>) {
+        outputfile3 &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; AccessStrict2[i] &lt;&lt; std::endl;
+      }<span class="Conditional">else</span> {
+        outputfile3 &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; AccessStrict2[i];
+      }
+    }
+  StartTime_DataStrict = ns3::Simulator::Now().GetSeconds();
+  }
+}
+
+<span class="Type">void</span>
+Cs::setTrustValue()
+{
+  <span class="Conditional">if</span> ( (ns3::Simulator::Now().GetSeconds()-StartTime_TrustValue) &gt; TRUSTVALUE_INTERVAL){
+    <span class="Type">double</span> Point_Average = <span class="Number">0</span>;
+    <span class="Comment">// ファイルにCacheHit_Rateを出力</span>
+
+    <span class="Repeat">for</span> (<span class="Type">int</span> j = <span class="Number">0</span>; j &lt; USER_NUM; j++) {
+      <span class="Repeat">for</span> (<span class="Type">int</span> i = <span class="Number">0</span>; i &lt; USER_NUM; i++) {
+        <span class="Comment">//ユーザjと他のユーザの共通するデータをResult[j]に格納</span>
+        <span class="Conditional">if</span> (i != j) {
+          std::set_intersection(User_List[j].begin(), User_List[j].end(),
+                                User_List[i].begin(), User_List[i].end(),
+                                std::inserter(Result[j], Result[j].end()));
+          <span class="Comment">//User_List[j]とUser_List[i]の共通するデータをResult[j]に格納</span>
+        }
+      }
+      Point_Average += Result[j].size();
+      <span class="Comment">//Point_AverageにResult[j]の要素数を加算</span>
+    }
+
+    Point_Average = Point_Average/USER_NUM;
+    <span class="Comment">//ResultTableの要素数平均をだす</span>
+
+    <span class="Repeat">for</span> (<span class="Type">int</span> i = <span class="Number">0</span>; i &lt; USER_NUM; i++) {
+      <span class="Comment">//その値とそれぞれのTableとの差をユーザにポイントとして与える</span>
+      User_Point[i] += (Result[i].size() - Point_Average);
+      <span class="Comment">//ユーザに与えられるポイントはResult[i]-要素数平均</span>
+      <span class="Type">auto</span> TrustValue = <span class="Number">1</span>/(<span class="Number">1</span>+exp(-<span class="Float">0.01</span>*User_Point[i]));
+      <span class="Comment">//信頼値の定義式</span>
+      <span class="Conditional">if</span> (i == <span class="Number">0</span>) {
+        outputfile2 &lt;&lt; ns3::Simulator::Now().GetSeconds() &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; TrustValue;
+      }<span class="Conditional">else</span> <span class="Conditional">if</span> (i == USER_NUM-<span class="Number">1</span>) {
+        outputfile2 &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; TrustValue &lt;&lt; std::endl;
+      }<span class="Conditional">else</span> {
+        outputfile2 &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; TrustValue;
+      }
+      <span class="Type">auto</span> itr = User_TrustValue_Table.find(i);
+      <span class="Conditional">if</span>(itr == User_TrustValue_Table.end()){
+        User_TrustValue_Table.insert({User_TrustValue_Data(i,TrustValue)});
+      }<span class="Conditional">else</span>{
+        itr-&gt;second = TrustValue;
+      }
+      <span class="Comment">//そのポイントの合計を元に信頼値を決定</span>
+
+      <span class="Type">auto</span> Result_begin = Result[i].begin();
+      <span class="Type">auto</span> Result_end = Result[i].end();
+      Result[i].erase(Result_begin, Result_end);
+      <span class="Comment">//ResultTableを初期化</span>
+
+      <span class="Type">auto</span> User_begin = User_List[i].begin();
+      <span class="Type">auto</span> User_end = User_List[i].end();
+      User_List[i].erase(User_begin, User_end);
+      <span class="Comment">//User_Listを初期化</span>
+
+    }
+    StartTime_TrustValue = ns3::Simulator::Now().GetSeconds();
+  }
+}
+
+<span class="Type">void</span>
+Cs::setArriveTimeProposal1(<span class="StorageClass">const</span> Interest&amp; interest)
+{
+  <span class="Type">auto</span> itr_arrive = DataArriveTable.find(interest.getNonce());
+  <span class="Comment">//データレートテーブルから要求パケットを送ったユーザのイテレータを取得</span>
+  <span class="Conditional">if</span>(itr_arrive == DataArriveTable.end()){
+    <span class="Comment">//そのユーザからの初めてのアクセスの場合</span>
+    ArriveTime = ns3::Simulator::Now().GetSeconds();
+    <span class="Comment">//この要求パケットのデータ到着時間を取得 </span>
+    DataArriveTable.insert( UserData{ interest.getNonce(), ArriveTime } );
+    <span class="Comment">//データをテーブルに挿入</span>
+  }<span class="Conditional">else</span>{
+      <span class="Comment">//そのデータからのアクセスがすでにある場合</span>
+      Before_ArriveTime = itr_arrive-&gt;second;
+      <span class="Comment">//前の要求パケットデータ到着時間を取得</span>
+      ArriveTime = ns3::Simulator::Now().GetSeconds();
+      <span class="Comment">//この要求パケットのデータ到着時間を取得 </span>
+      <span class="Comment">//データ制限よりも到着時間が早い場合は，ArriveTimeは格納しない</span>
+      <span class="Conditional">if</span>((ArriveTime - Before_ArriveTime) &gt; ACCESS_STRICT){
+      <span class="Comment">//データの到着間隔がAccessStrict2より大きかったら</span>
+        itr_arrive-&gt;second = ArriveTime;
+        <span class="Comment">//要求パケットを送ったノードのIDと要求パケットの到着時間をテーブルに格納</span>
+        AccessStrictSet1 = <span class="Boolean">true</span>;
+        <span class="Comment">//アクセス制限はしない</span>
+      }<span class="Conditional">else</span>{
+        <span class="Comment">//AccessStruce2よりも短い間隔で送られてきた場合</span>
+        AccessStrictSet1 = <span class="Boolean">false</span>;
+        <span class="Comment">//アクセス制限実行</span>
+      }
+  }
+}
+
+<span class="Type">void</span>
+Cs::setArriveTimeProposal2(<span class="StorageClass">const</span> Interest&amp; interest)
+{
+  <span class="Type">auto</span> itr_arrive = DataArriveTable.find(interest.getNonce());
+  <span class="Comment">//データレートテーブルから要求パケットを送ったユーザのイテレータを取得</span>
+  <span class="Conditional">if</span>(itr_arrive == DataArriveTable.end()){
+    <span class="Comment">//そのユーザからの初めてのアクセスの場合</span>
+    ArriveTime = ns3::Simulator::Now().GetSeconds();
+    <span class="Comment">//この要求パケットのデータ到着時間を取得 </span>
+    DataArriveTable.insert( UserData{ interest.getNonce(), ArriveTime } );
+    <span class="Comment">//データをテーブルに挿入</span>
+    <span class="Comment">// if(interest.getNonce() &lt; USER_NUM){</span>
+    <span class="Comment">// DataArrive_First[interest.getNonce()] = true;</span>
+    <span class="Comment">// //一回目のアクセスが終了したことフラグで示す</span>
+    <span class="Comment">// }</span>
+  }<span class="Conditional">else</span>{
+      <span class="Comment">//そのデータからのアクセスがすでにある場合</span>
+      Before_ArriveTime = itr_arrive-&gt;second;
+      <span class="Comment">//前の要求パケットデータ到着時間を取得</span>
+      ArriveTime = ns3::Simulator::Now().GetSeconds();
+      <span class="Comment">//この要求パケットのデータ到着時間を取得 </span>
+      <span class="Comment">//データ制限よりも到着時間が早い場合は，ArriveTimeは格納しない</span>
+      <span class="Conditional">if</span>(AccessCount[interest.getNonce()] &lt; AccessStrict2[interest.getNonce()]){
+      <span class="Comment">//データの到着間隔がAccessStrict2より大きかったら</span>
+        itr_arrive-&gt;second = ArriveTime;
+        <span class="Comment">//要求パケットを送ったノードのIDと要求パケットの到着時間をテーブルに格納</span>
+        AccessStrictSet2 = <span class="Boolean">true</span>;
+        <span class="Comment">//アクセス制限はしない</span>
+      }<span class="Conditional">else</span>{
+        <span class="Comment">//AccessStruce2よりも短い間隔で送られてきた場合</span>
+        itr_arrive-&gt;second = ArriveTime;
+
+        AccessStrictSet2 = <span class="Boolean">false</span>;
+        <span class="Comment">// std::cout &lt;&lt; &quot;User&quot; &lt;&lt; interest.getNonce() &lt;&lt; &quot;strict!&quot; &lt;&lt; std::endl;</span>
+        <span class="Comment">//アクセス制限実行</span>
+      }
+  }
+}
+
+<span class="Type">void</span>
+Cs::measureResult(<span class="StorageClass">const</span> Interest&amp; interest)
+{
+  <span class="Conditional">if</span> ((ns3::Simulator::Now().GetSeconds() - StartTime) &gt; INTERVAL) {
+    <span class="Comment">//測定時間がINTERVALをこえた場合，測定結果をfileに出力</span>
+    <span class="Type">double</span> CacheHit_Rate =
+      (<span class="Type">double</span>)CacheHit_Counter/(CacheHit_Counter + CacheMiss_Counter);
+    <span class="Comment">//キャッシュヒット率＝キャッシュヒット回数/(キャッシュヒット回数＋キャッシュミス回数)</span>
+    <span class="Type">double</span> Verification_Rate =
+      (<span class="Type">double</span>)Verification_Counter/CacheMiss_Counter;
+    <span class="Comment">//認証率＝認証回数/キャッシュミス回数</span>
+    <span class="Conditional">if</span> (CacheMiss_Counter == <span class="Number">0</span>) {
+      Verification_Rate = <span class="Number">0</span>;
+    }
+    <span class="Type">double</span> Threshold =
+      (<span class="Type">double</span>)Verification_Rate/CacheHit_Rate;
+    <span class="Comment">//閾値＝認証率/キャッシュヒット率</span>
+
+    outputfile1 &lt;&lt; StartTime
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; Threshold
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheHit_Rate
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheHit_Counter
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheMiss_Counter
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; Verification_Counter &lt;&lt; std::endl;
+
+    <span class="Type">auto</span> Miss_begin = Miss_List.begin();
+    <span class="Type">auto</span> Miss_end = Miss_List.end();
+    Miss_List.erase(Miss_begin, Miss_end);
+
+    CacheHit_Counter = <span class="Number">0</span>;
+    CacheMiss_Counter = <span class="Number">0</span>;
+    Verification_Counter = <span class="Number">0</span>;
+    first = <span class="Boolean">true</span>;
+    StartTime = ns3::Simulator::Now().GetSeconds();
+    <span class="Comment">//測定結果を記録したら，それぞれの値を初期化</span>
+  }
+}
+
+<span class="Type">void</span>
+Cs::measureResultProposal1(<span class="StorageClass">const</span> Interest&amp; interest)
+{
+  <span class="Conditional">if</span> ((ns3::Simulator::Now().GetSeconds() - StartTime) &gt; INTERVAL) {
+    <span class="Comment">//測定時間がINTERVALをこえた場合，測定結果をfileに出力</span>
+    <span class="Type">double</span> CacheHit_Rate =
+      (<span class="Type">double</span>)CacheHit_Counter/(CacheHit_Counter + CacheMiss_Counter);
+    <span class="Comment">//キャッシュヒット率＝キャッシュヒット回数/(キャッシュヒット回数＋キャッシュミス回数)</span>
+    <span class="Type">double</span> Verification_Rate =
+      (<span class="Type">double</span>)Verification_Counter/CacheMiss_Counter;
+    <span class="Comment">//認証率＝認証回数/キャッシュミス回数</span>
+    <span class="Conditional">if</span> (CacheMiss_Counter == <span class="Number">0</span>) {
+      Verification_Rate = <span class="Number">0</span>;
+    }
+    <span class="Type">double</span> Threshold =
+      (<span class="Type">double</span>)Verification_Rate/CacheHit_Rate;
+    <span class="Comment">//閾値＝認証率/キャッシュヒット率</span>
+
+    outputfile4 &lt;&lt; StartTime;
+    <span class="Repeat">for</span>(<span class="Type">int</span> i = <span class="Number">0</span>; i &lt; USER_NUM; i++){
+      UserAccuracy[i] = (<span class="Type">double</span>)UserSend[i]/(UserSend[i] + UserNotSend[i]);
+      outputfile4 &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; UserAccuracy[i];
+      UserSend[i] = <span class="Number">0</span>;
+      UserNotSend[i] = <span class="Number">0</span>;
+    }
+    outputfile4 &lt;&lt; std::endl;
+
+    outputfile1 &lt;&lt; StartTime
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; Threshold
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheHit_Rate
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheHit_Counter
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheMiss_Counter
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; Verification_Counter &lt;&lt; std::endl;
+
+    <span class="Type">auto</span> Miss_begin = Miss_List.begin();
+    <span class="Type">auto</span> Miss_end = Miss_List.end();
+    Miss_List.erase(Miss_begin, Miss_end);
+
+    CacheHit_Counter = <span class="Number">0</span>;
+    CacheMiss_Counter = <span class="Number">0</span>;
+    Verification_Counter = <span class="Number">0</span>;
+    first = <span class="Boolean">true</span>;
+    StartTime = ns3::Simulator::Now().GetSeconds();
+    <span class="Comment">//測定結果を記録したら，それぞれの値を初期化</span>
+  }
+}
+
+<span class="Type">void</span>
+Cs::measureResultProposal2(<span class="StorageClass">const</span> Interest&amp; interest)
+{
+  <span class="Conditional">if</span> ((ns3::Simulator::Now().GetSeconds() - StartTime) &gt; INTERVAL) {
+    <span class="Comment">//測定時間がINTERVALをこえた場合，測定結果をfileに出力</span>
+    <span class="Type">double</span> CacheHit_Rate =
+      (<span class="Type">double</span>)CacheHit_Counter/(CacheHit_Counter + CacheMiss_Counter);
+    <span class="Comment">//キャッシュヒット率＝キャッシュヒット回数/(キャッシュヒット回数＋キャッシュミス回数)</span>
+    <span class="Type">double</span> Verification_Rate =
+      (<span class="Type">double</span>)Verification_Counter/CacheMiss_Counter;
+    <span class="Comment">//認証率＝認証回数/キャッシュミス回数</span>
+    <span class="Conditional">if</span> (CacheMiss_Counter == <span class="Number">0</span>) {
+      Verification_Rate = <span class="Number">0</span>;
+    }
+    <span class="Type">double</span> Threshold =
+      (<span class="Type">double</span>)Verification_Rate/CacheHit_Rate;
+    <span class="Comment">//閾値＝認証率/キャッシュヒット率</span>
+
+    outputfile1 &lt;&lt; StartTime
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; Threshold
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheHit_Rate
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheHit_Counter
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; CacheMiss_Counter
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; Verification_Counter
+      &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; Verification_Attacker_Counter &lt;&lt; std::endl;
+
+    outputfile4 &lt;&lt; StartTime;
+    <span class="Repeat">for</span>(<span class="Type">int</span> i = <span class="Number">0</span>; i &lt; USER_NUM; i++){
+      UserAccuracy[i] = (<span class="Type">double</span>)UserSend[i]/(UserSend[i] + UserNotSend[i]);
+      outputfile4 &lt;&lt; <span class="String">&quot;,&quot;</span> &lt;&lt; UserAccuracy[i];
+      UserSend[i] = <span class="Number">0</span>;
+      UserNotSend[i] = <span class="Number">0</span>;
+    }
+    outputfile4 &lt;&lt; std::endl;
+    <span class="Comment">// this-&gt;setTrustValue();</span>
+    <span class="Comment">//信頼値をセット</span>
+
+    <span class="Type">auto</span> Miss_begin = Miss_List.begin();
+    <span class="Type">auto</span> Miss_end = Miss_List.end();
+    Miss_List.erase(Miss_begin, Miss_end);
+
+    CacheHit_Counter = <span class="Number">0</span>;
+    CacheMiss_Counter = <span class="Number">0</span>;
+    Verification_Counter = <span class="Number">0</span>;
+    Verification_Attacker_Counter = <span class="Number">0</span>;
+    first = <span class="Boolean">true</span>;
+    StartTime = ns3::Simulator::Now().GetSeconds();
+    <span class="Comment">//測定結果を記録したら，それぞれの値を初期化</span>
+    <span class="Repeat">for</span>(<span class="Type">int</span> i = <span class="Number">0</span>; i &lt; USER_NUM; i++){
+      AccessCount[i] = <span class="Number">0</span>;
+    }
+  }
+}
+
+<span class="Type">void</span>
+Cs::find(<span class="StorageClass">const</span> Interest&amp; interest,
+         <span class="StorageClass">const</span> HitCallback&amp; hitCallback,
+         <span class="StorageClass">const</span> MissCallback&amp; missCallback)
+{
+  <span class="Comment">//適合するデータパケットを見つける</span>
+  BOOST_ASSERT(<span class="Statement">static_cast</span>&lt;<span class="Type">bool</span>&gt;(hitCallback));
+  BOOST_ASSERT(<span class="Statement">static_cast</span>&lt;<span class="Type">bool</span>&gt;(missCallback));
+
+  <span class="Conditional">if</span> (interest.getNonce() &lt; USER_NUM) {
+    <span class="Comment">//ユーザのデータである場合</span>
+    User_List[interest.getNonce()].insert(interest.getName());
+    <span class="Comment">//ユーザのテーブルにデータを格納</span>
+  }
+
+  <span class="Conditional">if</span> (setProposal1 == <span class="Boolean">false</span> &amp;&amp; setProposal2 == <span class="Boolean">false</span>) {
+    <span class="Statement">this</span>-&gt;measureResult(interest);
+    <span class="Comment">//データを測定</span>
+  }
+
+  <span class="Conditional">if</span> (setProposal1 == <span class="Boolean">true</span>) {
+    <span class="Statement">this</span>-&gt;setArriveTimeProposal1(interest);
+    <span class="Comment">//到着時間をセット</span>
+    <span class="Statement">this</span>-&gt;measureResultProposal1(interest);
+    <span class="Comment">//データを測定</span>
+  }
+
+  <span class="Conditional">if</span> (setProposal2 == <span class="Boolean">true</span>) {
+    <span class="Statement">this</span>-&gt;setTrustValue();
+    <span class="Comment">//信頼値をセット</span>
+    <span class="Statement">this</span>-&gt;setAccessStrict(interest);
+    <span class="Comment">//アクセス制限をセット</span>
+    <span class="Statement">this</span>-&gt;setArriveTimeProposal2(interest);
+    <span class="Comment">//到着時間をセット</span>
+    <span class="Statement">this</span>-&gt;measureResultProposal2(interest);
+    <span class="Comment">//データを測定</span>
+  }
+
+  <span class="Conditional">if</span> (!m_shouldServe || m_policy-&gt;getLimit() == <span class="Number">0</span>) {
+    missCallback(interest);
+    <span class="Statement">return</span>;
+  }
+  <span class="StorageClass">const</span> Name&amp; prefix = interest.getName();
+  <span class="Comment">//要求パケットの名前を取得</span>
+  <span class="Type">bool</span> isRightmost = interest.getChildSelector() == <span class="Number">1</span>;
+  NFD_LOG_DEBUG(<span class="String">&quot;find &quot;</span> &lt;&lt; prefix &lt;&lt; (isRightmost ? <span class="String">&quot; R&quot;</span> : <span class="String">&quot; L&quot;</span>));
+
+  iterator first = m_table.lower_bound(prefix);
+  iterator last = m_table.end();
+  <span class="Conditional">if</span> (prefix.size() &gt; <span class="Number">0</span>) {
+    last = m_table.lower_bound(prefix.getSuccessor());
+  }
+
+  iterator match = last;
+  <span class="Conditional">if</span> (isRightmost) {
+    match = <span class="Statement">this</span>-&gt;findRightmost(interest, first, last);
+  }<span class="Conditional">else</span> {
+    match = <span class="Statement">this</span>-&gt;findLeftmost(interest, first, last);
+  }
+
+  <span class="Conditional">if</span> (match == last) {
+    <span class="Comment">// NFD_LOG_DEBUG(&quot;  no-match&quot;);</span>
+    CacheMiss_Counter++;
+    <span class="Comment">//キャッシュミスのカウンターをインクリメント</span>
+    Miss_List.insert(interest.getName());
+    <span class="Comment">//ミスリストにデータを加える</span>
+    <span class="Conditional">if</span> (AccessStrictSet1 == <span class="Boolean">true</span> &amp;&amp; AccessStrictSet2 == <span class="Boolean">true</span>) {
+      <span class="Comment">// &amp;&amp; DataArrive_First[interest.getNonce()] == true)){</span>
+      <span class="Comment">//もしデータ制限がかかっていたらデータを送り返さない</span>
+      <span class="Conditional">if</span>(interest.getNonce() &lt; USER_NUM){
+        UserSend[interest.getNonce()]++;
+        missCallback(interest);
+      }<span class="Conditional">else</span> {
+        <span class="Comment">//NonceがUSER_NUM以上のもの（経路構築のパケット）である場合</span>
+        missCallback(interest);
+      }
+    }<span class="Conditional">else</span> {
+      <span class="Conditional">if</span>(interest.getNonce() &lt; USER_NUM){
+        UserNotSend[interest.getNonce()]++;
+      }
+    }
+    <span class="Statement">return</span>;
+  }
+  CacheHit_Counter++;
+  <span class="Comment">//キャッシュヒットのカウンタをインクリメント</span>
+  m_policy-&gt;beforeUse(match);
+  <span class="Comment">//マッチしたデータの場所を変える</span>
+  <span class="Conditional">if</span> (match-&gt;getFLag() == <span class="Boolean">true</span>) {
+    <span class="Comment">//すでに認証済みのフラグが付いていたら認証を飛ばす</span>
+    <span class="Conditional">if</span> (AccessStrictSet1 == <span class="Boolean">true</span> &amp;&amp; AccessStrictSet2 == <span class="Boolean">true</span>) {
+      <span class="Comment">//&amp;&amp;DataArrive_First[interest.getNonce()] == true)){</span>
+      <span class="Comment">//もしデータ制限がかかっていたらデータを送り返さない</span>
+      UserSend[interest.getNonce()]++;
+      hitCallback(interest, match-&gt;getData());
+    }<span class="Conditional">else</span> <span class="Conditional">if</span> (interest.getNonce() &gt; USER_NUM) {
+      <span class="Comment">//NonceがUSER_NUM以上のもの（経路構築のパケット）である場合</span>
+      UserSend[interest.getNonce()]++;
+      hitCallback(interest, match-&gt;getData());
+    }<span class="Conditional">else</span> {
+      UserNotSend[interest.getNonce()]++;
+    }
+  }<span class="Conditional">else</span>{
+    <span class="Comment">//認証をまだ行なっていないデータの場合</span>
+    <span class="Type">auto</span> itr_miss = Miss_List.find(interest.getName());
+    <span class="Conditional">if</span> (itr_miss != Miss_List.end()) {
+      Verification_Counter++;
+      <span class="Comment">//認証のカウンタをインクリメント</span>
+      <span class="Conditional">if</span>(interest.getNonce() == <span class="Number">1</span> || interest.getNonce() == <span class="Number">2</span>){
+        Verification_Attacker_Counter++;
+      }
+    }
+    <span class="Conditional">if</span> (ndn::security::verifySignature(match-&gt;getData(), m_key) == <span class="Boolean">true</span>) {
+      <span class="Comment">//データが正しいかどうか認証</span>
+      EntryImpl&amp; entry = <span class="Statement">const_cast</span>&lt;EntryImpl&amp;&gt;(*match);
+      entry.setFlag();
+      <span class="Comment">//データに正しいデータであることを示すフラグをつける</span>
+      <span class="Conditional">if</span> (AccessStrictSet1 == <span class="Boolean">true</span> &amp;&amp; AccessStrictSet2 == <span class="Boolean">true</span>) {
+        <span class="Comment">//もしデータ制限が制限がかかっていない場合データを送り返す</span>
+        UserSend[interest.getNonce()]++;
+        hitCallback(interest, match-&gt;getData());
+      }<span class="Conditional">else</span> <span class="Conditional">if</span> (interest.getNonce() &gt; USER_NUM) {
+        <span class="Comment">//NonceがUSER_NUM以上のもの（経路構築のパケット）である場合</span>
+        hitCallback(interest, match-&gt;getData());
+      }<span class="Conditional">else</span> {
+        UserNotSend[interest.getNonce()]++;
+      }
+    }
+  }
+}
+
+iterator
+Cs::findLeftmost(<span class="StorageClass">const</span> Interest&amp; interest, iterator first, iterator last) <span class="StorageClass">const</span>
+{
+  <span class="Comment">//範囲内から指定された条件を満たす最初の要素を検索する</span>
+  <span class="Statement">return</span> std::find_if(first, last, bind(&amp;cs::EntryImpl::canSatisfy, _1, interest));
+}
+
+iterator
+Cs::findRightmost(<span class="StorageClass">const</span> Interest&amp; interest, iterator first, iterator last) <span class="StorageClass">const</span>
+{
+  <span class="Comment">// Each loop visits a sub-namespace under a prefix one component longer than Interest Name.</span>
+  <span class="Comment">// If there is a match in that sub-namespace, the leftmost match is returned;</span>
+  <span class="Comment">// otherwise, loop continues.</span>
+
+  <span class="Type">size_t</span> interestNameLength = interest.getName().size();
+  <span class="Repeat">for</span> (iterator right = last; right != first;) {
+    iterator prev = std::prev(right);
+
+    <span class="Comment">// special case: [first,prev] have exact Names</span>
+    <span class="Conditional">if</span> (prev-&gt;getName().size() == interestNameLength) {
+      NFD_LOG_TRACE(<span class="String">&quot;  find-among-exact &quot;</span> &lt;&lt; prev-&gt;getName());
+      iterator matchExact = <span class="Statement">this</span>-&gt;findRightmostAmongExact(interest, first, right);
+      <span class="Statement">return</span> matchExact == right ? last : matchExact;
+    }
+
+    Name prefix = prev-&gt;getName().getPrefix(interestNameLength + <span class="Number">1</span>);
+    iterator left = m_table.lower_bound(prefix);
+
+    <span class="Comment">// normal case: [left,right) are under one-component-longer prefix</span>
+    NFD_LOG_TRACE(<span class="String">&quot;  find-under-prefix &quot;</span> &lt;&lt; prefix);
+    iterator match = <span class="Statement">this</span>-&gt;findLeftmost(interest, left, right);
+    <span class="Conditional">if</span> (match != right) {
+      <span class="Statement">return</span> match;
+    }
+    right = left;
+  }
+  <span class="Statement">return</span> last;
+}
+
+iterator
+Cs::findRightmostAmongExact(<span class="StorageClass">const</span> Interest&amp; interest, iterator first, iterator last) <span class="StorageClass">const</span>
+{
+  <span class="Statement">return</span> find_last_if(first, last, bind(&amp;EntryImpl::canSatisfy, _1, interest));
+}
+
+<span class="Type">void</span>
+Cs::dump()
+{
+  NFD_LOG_DEBUG(<span class="String">&quot;dump table&quot;</span>);
+  <span class="Repeat">for</span> (<span class="StorageClass">const</span> EntryImpl&amp; entry : m_table) {
+    NFD_LOG_TRACE(entry.getFullName());
+  }
+}
+
+<span class="Type">void</span>
+Cs::setPolicy(unique_ptr&lt;Policy&gt; policy)
+{
+  BOOST_ASSERT(policy != <span class="Constant">nullptr</span>);
+  BOOST_ASSERT(m_policy != <span class="Constant">nullptr</span>);
+  <span class="Type">size_t</span> limit = m_policy-&gt;getLimit();
+  <span class="Statement">this</span>-&gt;setPolicyImpl(std::move(policy));
+  m_policy-&gt;setLimit(limit);
+}
+
+<span class="Type">void</span>
+Cs::setPolicyImpl(unique_ptr&lt;Policy&gt; policy)
+{
+  NFD_LOG_DEBUG(<span class="String">&quot;set-policy &quot;</span> &lt;&lt; policy-&gt;getName());
+  m_policy = std::move(policy);
+  m_beforeEvictConnection = m_policy-&gt;beforeEvict.connect([<span class="Statement">this</span>] (iterator it) {
+      m_table.erase(it);
+    });
+
+  m_policy-&gt;setCs(<span class="Statement">this</span>);
+  BOOST_ASSERT(m_policy-&gt;getCs() == <span class="Statement">this</span>);
+}
+
+<span class="Type">void</span>
+Cs::enableAdmit(<span class="Type">bool</span> shouldAdmit)
+{
+  <span class="Conditional">if</span> (m_shouldAdmit == shouldAdmit) {
+    <span class="Statement">return</span>;
+  }
+  m_shouldAdmit = shouldAdmit;
+  NFD_LOG_INFO((shouldAdmit ? <span class="String">&quot;Enabling&quot;</span> : <span class="String">&quot;Disabling&quot;</span>) &lt;&lt; <span class="String">&quot; Data admittance&quot;</span>);
+}
+
+<span class="Type">void</span>
+Cs::enableServe(<span class="Type">bool</span> shouldServe)
+{
+  <span class="Conditional">if</span> (m_shouldServe == shouldServe) {
+    <span class="Statement">return</span>;
+  }
+  m_shouldServe = shouldServe;
+  NFD_LOG_INFO((shouldServe ? <span class="String">&quot;Enabling&quot;</span> : <span class="String">&quot;Disabling&quot;</span>) &lt;&lt; <span class="String">&quot; Data serving&quot;</span>);
+}
+
+} <span class="Comment">//csの名前空間の終了</span>
+} <span class="Comment">//nfdの名前空間の終了</span>
+</pre>
+</body>
+</html>
+<!-- vim: set foldmethod=manual : -->

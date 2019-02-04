@@ -84,7 +84,7 @@ SLruPolicy2::evictProtectEntries()
   m_queue.push_back(i2);
   m_queue_protect.pop_front();
   //その要素を保護エリアから削除する．
-  std::cout << "send noprotect"<< i2->getName() << std::endl;
+  // std::cout << "send noprotect"<< i2->getName() << std::endl;
   //その要素を保護エリアから非保護エリアへ移動する．
   }
 }

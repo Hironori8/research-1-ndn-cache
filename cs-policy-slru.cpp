@@ -15,15 +15,14 @@ namespace slru {
 int c = 0;
 //キャッシュへのアクセス回数のカウンタ
 
-time_t now = std::time(nullptr);
-char CacheMiss[60];
-char NoProtectList[60];
-int n1 = sprintf(CacheMiss,"./Result/CacheMiss/CacheMiss_%s.csv",ctime(&now));
-int n2 = sprintf(NoProtectList,"./Result/NoProtectList/NoProtectList_%s.csv",ctime(&now));
-
-std::ofstream outputfile(CacheMiss);
+// time_t now = std::time(nullptr);
+// char CacheMiss[60];
+// char NoProtectList[60];
+// int n1 = sprintf(CacheMiss,"./Result/CacheMiss/CacheMiss_%s.csv",ctime(&now));
+// int n2 = sprintf(NoProtectList,"./Result/NoProtectList/NoProtectList_%s.csv",ctime(&now));
+// std::ofstream outputfile(CacheMiss);
 //キャッシュヒット，ミスをファイルに出力
-std::ofstream outputfile2(NoProtectList);
+// std::ofstream outputfile2(NoProtectList);
 //非保護リストをファイルに出力
 
 const std::string SLruPolicy::POLICY_NAME = "slru";
@@ -37,12 +36,12 @@ void
 SLruPolicy::doAfterInsert(iterator i)
 {
   //挿入されたあとに呼び出されるメソッド
-  outputfile <<ns3::Simulator::Now().GetSeconds() 
-    << "CacheMiss:"<< "no_protect:"<< m_queue.size() 
-    << "protect:"<< m_queue_protect.size() << std::endl;
+  // outputfile <<ns3::Simulator::Now().GetSeconds() 
+    // << "CacheMiss:"<< "no_protect:"<< m_queue.size() 
+    // << "protect:"<< m_queue_protect.size() << std::endl;
   
   //キャッシュミスしたことをプリント
-  std::cout << "insert:" << i->getName() << std::endl;
+  // std::cout << "insert:" << i->getName() << std::endl;
   //挿入されたデータをプリント
   this->insertToQueue(i, true);
   //CSに挿入されたときに呼び出されるメソッド
@@ -141,10 +140,10 @@ void
 SLruPolicy::insertToQueue(iterator i, bool isNewEntry)
 //要素を挿入するためのコマンド
 {
-  if(ns3::Simulator::Now().GetSeconds()==20.8){
-    BOOST_FOREACH(const iterator& i,m_queue)
-    outputfile2 <<"NoProtectList:"<< i->getName() << std::endl;
-  }
+  // if(ns3::Simulator::Now().GetSeconds()==20.8){
+    // BOOST_FOREACH(const iterator& i,m_queue)
+    // // outputfile2 <<"NoProtectList:"<< i->getName() << std::endl;
+  // }
   //新たな要素を末尾に追加
   if(!isNewEntry){
     //既存のデータであった場合
@@ -157,9 +156,9 @@ SLruPolicy::insertToQueue(iterator i, bool isNewEntry)
       //そのデータを保護エリアの最後尾に挿入
       m_queue.erase(result);
       //非保護エリアのデータを削除
-      outputfile << ns3::Simulator::Now().GetSeconds() 
-        << ":CacheHitInNoProtect:"<<"no_protect:"<< m_queue.size() 
-        << "protect:"<< m_queue_protect.size() << std::endl;
+      // outputfile << ns3::Simulator::Now().GetSeconds() 
+        // << ":CacheHitInNoProtect:"<<"no_protect:"<< m_queue.size() 
+        // << "protect:"<< m_queue_protect.size() << std::endl;
       //データをcsvに出力
 
        // this->printQueue();
@@ -174,15 +173,15 @@ SLruPolicy::insertToQueue(iterator i, bool isNewEntry)
       //そのデータが保護エリアにあった場合
       if(result_protect != m_queue_protect.end()){
 
-        std::cout << "CacheHit in Protect" << std::endl;
+        // std::cout << "CacheHit in Protect" << std::endl;
         //保護エリアでキャッシュヒットが起きたことをプリント
 
         m_queue_protect.relocate(m_queue_protect.end(),result_protect);
         //そのデータを保護エリアの最後尾に移動
 
-        outputfile << ns3::Simulator::Now().GetSeconds() 
-          << ":CacheHitInProtect:"<<"no_protect:"<< m_queue.size() 
-          << "protect:"<< m_queue_protect.size() << std::endl;
+        // outputfile << ns3::Simulator::Now().GetSeconds() 
+          // << ":CacheHitInProtect:"<<"no_protect:"<< m_queue.size() 
+          // << "protect:"<< m_queue_protect.size() << std::endl;
 
         // this->printQueue();
         // 非保護エリアにあるデータを表示
