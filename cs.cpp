@@ -45,7 +45,7 @@
 
 #define IDENTITY_NAME "NDNSERVER"
 //サーバから取ってきたことを証明
-#define USER_NUM 10
+#define USER_NUM 100
 //ユーザの総数
 #define ACCESS_STRICT 0.01
 //アクセス制限
@@ -55,13 +55,14 @@
 //計測の時間間隔
 #define DATASTRICT_INTERVAL 0.025
 //データ制限の時間間隔
+#define ATTACKER_NUM 10
 
 namespace nfd {
 namespace cs {
 
-bool setProposal1 = true;
+bool setProposal1 = false;
 //提案方式１を実装するフラグ
-bool setProposal2 = false;
+bool setProposal2 = true;
 //提案方式２を実装するフラグ
 bool AccessStrictSet1 = true;
 //アクセス制御を行うことを示すフラグ
@@ -97,6 +98,7 @@ char DataSet[60];
 char TrustValue[60];
 char DataStrict[60];
 char Accuracy[60];
+char Interval[60];
 int n1 = sprintf(DataSet
     ,"./Result/DataSet/DataSet_%s.csv",ctime(&now));
 int n2 = sprintf(TrustValue
@@ -105,10 +107,14 @@ int n3 = sprintf(DataStrict
     ,"./Result/DataStrict/DataStrict_%s.csv",ctime(&now));
 int n4 = sprintf(Accuracy
     ,"./Result/Accuracy/Accuracy_%s.csv",ctime(&now));
+int n5 = sprintf(Interval
+    ,"./Result/Interval/Interval_%s.csv",ctime(&now));
+
 std::ofstream outputfile1(DataSet);
 std::ofstream outputfile2(TrustValue);
 std::ofstream outputfile3(DataStrict);
 std::ofstream outputfile4(Accuracy);
+std::ofstream outputfile5(Interval);
 //データセットは閾値などのデータ
 
 
@@ -138,6 +144,27 @@ int UserNotSend[USER_NUM] = {};
 double UserAccuracy[USER_NUM] = {};
 bool first = true;
 //計測期間で最初のアクセスかどうかのフラグ
+
+std::unordered_map<int, int> User_Point_Table;
+using User_Point_Data = std::pair<int,int>;
+// 信頼値回復の為に参考にするテーブル(ユーザID, 信頼値カウンタ）
+std::unordered_map<int, int> User_Count_Table;
+using User_Count_Data = std::pair<int,int>;
+// 信頼値回復の為に参考にするテーブル(ユーザID,回数カウンタ)
+// int user_count[USER_NUM] = {};
+// bool user_judge[USER_NUM] = {};
+
+//攻撃察知モード
+double result[2] = {};
+double interval = 0;
+
+std::unordered_map<int, int> ave_interval_table;
+using ave_interval = std::pair<int,int>;
+
+int val_counter = 0;
+int ave_counter = 0;
+double total_interval = 0;
+bool detection_mode[USER_NUM] = {};
 
 NDN_CXX_ASSERT_FORWARD_ITERATOR(Cs::const_iterator);
 
@@ -245,7 +272,7 @@ Cs::setAccessStrict(const Interest& interest)
     //ユーザの信頼値を取得
     if (itr_trust == User_TrustValue_Table.end()) {
       //もし初めてのアクセスの場合
-      AccessStrict2[user_number] = 100;
+      AccessStrict2[user_number] = 40;
       //最初のアクセス制限を0.01に設定
       AccessCount[user_number]++;
       //そのIDのアクセスカウントをインクリメント
@@ -258,17 +285,20 @@ Cs::setAccessStrict(const Interest& interest)
         for(auto itr_trust = User_TrustValue_Table.begin();
             itr_trust != User_TrustValue_Table.end(); 
             ++itr_trust){
-          if(itr_trust->second > 0.38){
-            //もし信頼値が0.35を超えていた場合
-            AccessStrict2[itr_trust->first] = 
-            AccessStrict2[itr_trust->first] *1.01;
-            // AccessStrict2[itr_trust->first] *1.001;
-            //アクセス許可数を増やす
-          }else if(itr_trust->second < 0.38){
-            //信頼値が0.35より小さい場合
-            AccessStrict2[itr_trust->first] = 10;
-            //アクセス制限を0.01にリセット
-          }
+          // if(itr_trust->second > 0.38){
+            // //もし信頼値が0.35を超えていた場合
+            // AccessStrict2[itr_trust->first] = 
+            // AccessStrict2[itr_trust->first] *1.01;
+            // // AccessStrict2[itr_trust->first] *1.001;
+            // //アクセス許可数を増やす
+          // }else if(itr_trust->second < 0.38){
+            // //信頼値が0.35より小さい場合
+            // // AccessStrict2[itr_trust->first] = 10;
+            // //アクセス制限を0.01にリセット
+          // }
+          
+          AccessStrict2[itr_trust->first] = (itr_trust->second)*80; 
+
         }
       }
     }
@@ -293,31 +323,32 @@ void
 Cs::setTrustValue()
 {
   if ( (ns3::Simulator::Now().GetSeconds()-StartTime_TrustValue) > TRUSTVALUE_INTERVAL){ 
-    double Point_Average = 0; 
+    // double Point_Average = 0; 
     // ファイルにCacheHit_Rateを出力
 
-    for (int j = 0; j < USER_NUM; j++) {
-      for (int i = 0; i < USER_NUM; i++) {
-        //ユーザjと他のユーザの共通するデータをResult[j]に格納
-        if (i != j) {
-          std::set_intersection(User_List[j].begin(), User_List[j].end(),
-                                User_List[i].begin(), User_List[i].end(),
-                                std::inserter(Result[j], Result[j].end()));
-          //User_List[j]とUser_List[i]の共通するデータをResult[j]に格納
-        }
-      }
-      Point_Average += Result[j].size();
-      //Point_AverageにResult[j]の要素数を加算
-    }
+    // for (int j = 0; j < USER_NUM; j++) {
+      // for (int i = 0; i < USER_NUM; i++) {
+        // //ユーザjと他のユーザの共通するデータをResult[j]に格納
+        // if (i != j) {
+          // std::set_intersection(User_List[j].begin(), User_List[j].end(),
+              // User_List[i].begin(), User_List[i].end(),
+              // std::inserter(Result[j], Result[j].end()));
+          // //User_List[j]とUser_List[i]の共通するデータをResult[j]に格納
+        // }
+      // }
+      // Point_Average += Result[j].size();
+      // //Point_AverageにResult[j]の要素数を加算
+    // }
 
-    Point_Average = Point_Average/USER_NUM;
+    // Point_Average = Point_Average/USER_NUM;
     //ResultTableの要素数平均をだす
 
     for (int i = 0; i < USER_NUM; i++) {
       //その値とそれぞれのTableとの差をユーザにポイントとして与える
-      User_Point[i] += (Result[i].size() - Point_Average);
+      // User_Point[i] += (Result[i].size() - Point_Average);
       //ユーザに与えられるポイントはResult[i]-要素数平均
-      auto TrustValue = 1/(1+exp(-0.01*User_Point[i]));
+      // auto TrustValue = 1/(1+exp(-0.01*User_Point[i]));
+      auto TrustValue = 1/(1+exp(-User_Point[i]));
       //信頼値の定義式
       if (i == 0) {
         outputfile2 << ns3::Simulator::Now().GetSeconds() << "," << TrustValue;
@@ -334,14 +365,14 @@ Cs::setTrustValue()
       }
       //そのポイントの合計を元に信頼値を決定
 
-      auto Result_begin = Result[i].begin();
-      auto Result_end = Result[i].end();
-      Result[i].erase(Result_begin, Result_end);
+      // auto Result_begin = Result[i].begin();
+      // auto Result_end = Result[i].end();
+      // Result[i].erase(Result_begin, Result_end);
       //ResultTableを初期化
 
-      auto User_begin = User_List[i].begin();
-      auto User_end = User_List[i].end();
-      User_List[i].erase(User_begin, User_end);
+      // auto User_begin = User_List[i].begin();
+      // auto User_end = User_List[i].end();
+      // User_List[i].erase(User_begin, User_end);
       //User_Listを初期化
 
     }
@@ -392,10 +423,10 @@ Cs::setArriveTimeProposal2(const Interest& interest)
     //この要求パケットのデータ到着時間を取得 
     DataArriveTable.insert( UserData{ interest.getNonce(), ArriveTime } );
     //データをテーブルに挿入
-    // if(interest.getNonce() < USER_NUM){
-    // DataArrive_First[interest.getNonce()] = true;
-    // //一回目のアクセスが終了したことフラグで示す
-    // }
+    if(interest.getNonce() < USER_NUM){
+    DataArrive_First[interest.getNonce()] = true;
+    //一回目のアクセスが終了したことフラグで示す
+    }
   }else{
       //そのデータからのアクセスがすでにある場合
       Before_ArriveTime = itr_arrive->second;
@@ -434,9 +465,17 @@ Cs::measureResult(const Interest& interest)
     if (CacheMiss_Counter == 0) {
       Verification_Rate = 0;
     }
-    double Threshold =
-      (double)Verification_Rate/CacheHit_Rate;
+    // double Threshold =
+      // (double)Verification_Rate/CacheHit_Rate;
     //閾値＝認証率/キャッシュヒット率
+    double Threshold = 0;
+
+    if ((int)CacheHit_Rate != 0) {
+
+      Threshold =
+        (double) Verification_Rate/CacheHit_Rate;
+
+    }
 
     outputfile1 << StartTime 
       << "," << Threshold 
@@ -560,6 +599,110 @@ Cs::measureResultProposal2(const Interest& interest)
 }
 
 void
+Cs::setInterval_Detection()
+{
+    if(result[0] == 0){
+      result[0] = ns3::Simulator::Now().GetSeconds();
+      
+    }else{
+      result[1] = ns3::Simulator::Now().GetSeconds();
+
+      interval += result[1] - result[0];
+
+      val_counter++;
+
+
+      if(val_counter ==100){
+      // カウンターが１００であれば，ave_intervalに格納
+      
+        double sample_interval = interval/100;
+
+        // if(total_interval/ave_counter > 10*sample_interval && ns3::Simulator::Now().GetSeconds() > 10){
+        if(total_interval/ave_counter > 10*sample_interval){
+          // 平均よりもアクセス間隔が極端に短い場合  
+          for(int i = 0;i < USER_NUM; i++){
+
+            AccessStrict2[i] = 40;
+            // 全ユーザに制限をかける
+            detection_mode[i] = true;
+            // 攻撃を察知したため，攻撃者特定モードに移行
+            
+          }
+        }else{
+
+            total_interval += sample_interval;
+        }
+
+        outputfile5 << ns3::Simulator::Now().GetSeconds() << "," << sample_interval << std::endl;
+        ave_interval_table.insert( ave_interval{ ave_counter, sample_interval } );
+        // アクセスインターバルを記録
+
+        ave_counter++;
+
+        interval = 0;
+
+        val_counter = 0;
+
+      }
+      result[0] = 0;
+
+      result[1] = 0;
+
+    }
+
+}
+
+  void
+Cs::recover_trustvalue(const Interest& interest, int num)
+{
+
+  auto result = User_Point_Table.find(interest.getNonce());
+  auto counter = User_Count_Table.find(interest.getNonce());
+  auto trust = User_TrustValue_Table.find(interest.getNonce());
+
+  if(result == User_Point_Table.end()){
+
+    User_Point_Table.insert( User_Point_Data{ interest.getNonce(), 0} );
+    User_Count_Table.insert( User_Count_Data{ interest.getNonce(), num} );
+
+  }else{
+
+
+    auto count = counter->second;
+    count++;
+    counter->second = count;
+    if(num == -1){
+
+      result->second = num;
+
+    }
+    if(counter->second == 5){
+
+      if(interest.getNonce() < USER_NUM){
+
+        if(result->second != -1){
+
+          User_Point[interest.getNonce()]++; 
+          // 過去5回のアクセスをみてキャッシュヒットがなかったら信頼値をあげる
+
+          if(detection_mode[interest.getNonce()] == true){
+            // 攻撃を検知し，全ユーザのアクセスを制限している場合
+            trust->second = 1.0; 
+            //攻撃者でないため信頼値を回復
+            detection_mode[interest.getNonce()] = false;
+            //アクセスしてきたユーザの制限を解除
+          }
+
+        }
+      }
+      result->second = 0;
+      counter->second = 0;
+    }
+
+  }
+}
+
+void
 Cs::find(const Interest& interest,
          const HitCallback& hitCallback,
          const MissCallback& missCallback)
@@ -621,10 +764,16 @@ Cs::find(const Interest& interest,
 
   if (match == last) {
     // NFD_LOG_DEBUG("  no-match");
+
+    // 未認証コンテンツへの要求のため，要求された時間を記録
+    this->setInterval_Detection();
+    //未認証エリアへのアクセス間隔を計測し，攻撃を察知
+    this->recover_trustvalue(interest,0);
+    //過去のキャッシュヒットをみて信頼値を回復
     CacheMiss_Counter++;
     //キャッシュミスのカウンターをインクリメント
     Miss_List.insert(interest.getName());
-    //ミスリストにデータを加える
+    //キャッシュミスリストにデータを加える
     if (AccessStrictSet1 == true && AccessStrictSet2 == true) { 
       // && DataArrive_First[interest.getNonce()] == true)){
       //もしデータ制限がかかっていたらデータを送り返さない
@@ -648,35 +797,67 @@ Cs::find(const Interest& interest,
   //マッチしたデータの場所を変える
   if (match->getFLag() == true) {
     //すでに認証済みのフラグが付いていたら認証を飛ばす
+    
+    User_Point[interest.getNonce()]++;
+    //そのコンテンツを要求したユーザの信頼値をあげる
+
+    // 提案方式２の実装
+    this->recover_trustvalue(interest,1);
+    // 信頼値の回復作業を行う
     if (AccessStrictSet1 == true && AccessStrictSet2 == true) { 
-      //&&DataArrive_First[interest.getNonce()] == true)){
+
       //もしデータ制限がかかっていたらデータを送り返さない
       UserSend[interest.getNonce()]++;
+
       hitCallback(interest, match->getData());
+
     }else if (interest.getNonce() > USER_NUM) {
       //NonceがUSER_NUM以上のもの（経路構築のパケット）である場合
       UserSend[interest.getNonce()]++;
+
       hitCallback(interest, match->getData()); 
+
     }else {
+
       UserNotSend[interest.getNonce()]++;
+
     }
   }else{
     //認証をまだ行なっていないデータの場合
-    auto itr_miss = Miss_List.find(interest.getName());
-    if (itr_miss != Miss_List.end()) {
-      Verification_Counter++;
-      //認証のカウンタをインクリメント
-      if(interest.getNonce() == 1 || interest.getNonce() == 2){
-        Verification_Attacker_Counter++;
-      }
-    }
-    if (ndn::security::verifySignature(match->getData(), m_key) == true) {
-      //データが正しいかどうか認証
-      EntryImpl& entry = const_cast<EntryImpl&>(*match);
-      entry.setFlag();
-      //データに正しいデータであることを示すフラグをつける
-      if (AccessStrictSet1 == true && AccessStrictSet2 == true) { 
-        //もしデータ制限が制限がかかっていない場合データを送り返す
+    
+    // 未認証コンテンツに対する要求であるため時間を記録
+    this->setInterval_Detection();
+
+    //ユーザの信頼値を下げる
+    User_Point[interest.getNonce()]--;
+
+    this->recover_trustvalue(interest,-1);
+
+    // auto itr_miss = Miss_List.find(interest.getName());
+    // if (itr_miss != Miss_List.end()) {
+      // Verification_Counter++;
+      // //認証のカウンタをインクリメント
+      // if(1<=interest.getNonce()&& interest.getNonce() <= ATTACKER_NUM){
+        // Verification_Attacker_Counter++;
+      // }
+    // }
+
+    
+    if (AccessStrictSet1 == true && AccessStrictSet2 == true) { 
+      //もしデータ制限が制限がかかっていない場合データを送り返す
+      if (ndn::security::verifySignature(match->getData(), m_key) == true) {
+        //データが正しいかどうか認証
+        auto itr_miss = Miss_List.find(interest.getName());
+        if (itr_miss != Miss_List.end()) {
+          Verification_Counter++;
+          //認証のカウンタをインクリメント
+          if(1<=interest.getNonce()&& interest.getNonce() <= ATTACKER_NUM){
+            Verification_Attacker_Counter++;
+          }
+        }
+        EntryImpl& entry = const_cast<EntryImpl&>(*match);
+        entry.setFlag();
+        //データに正しいデータであることを示すフラグをつける
         UserSend[interest.getNonce()]++;
         hitCallback(interest, match->getData());
       }else if (interest.getNonce() > USER_NUM) {
@@ -686,6 +867,22 @@ Cs::find(const Interest& interest,
         UserNotSend[interest.getNonce()]++;
       }
     }
+    // if (ndn::security::verifySignature(match->getData(), m_key) == true) {
+      // //データが正しいかどうか認証
+      // EntryImpl& entry = const_cast<EntryImpl&>(*match);
+      // entry.setFlag();
+      // //データに正しいデータであることを示すフラグをつける
+      // if (AccessStrictSet1 == true && AccessStrictSet2 == true) { 
+        // //もしデータ制限が制限がかかっていない場合データを送り返す
+        // UserSend[interest.getNonce()]++;
+        // hitCallback(interest, match->getData());
+      // }else if (interest.getNonce() > USER_NUM) {
+        // //NonceがUSER_NUM以上のもの（経路構築のパケット）である場合
+        // hitCallback(interest, match->getData());
+      // }else {
+        // UserNotSend[interest.getNonce()]++;
+      // }
+    // }
   }
 }
 

@@ -93,6 +93,10 @@ public:
   measureResultProposal1(const Interest& interest);
   void
   measureResultProposal2(const Interest& interest);
+  void
+  recover_trustvalue(const Interest& interest, int num);
+  void
+  setInterval_Detection();
 
   void
   find(const Interest& interest,
