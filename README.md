@@ -2,7 +2,7 @@
 
 * 執筆した論文は[こちら](https://ieeexplore.ieee.org/abstract/document/9026521/authors#authors)（Click [here](https://ieeexplore.ieee.org/abstract/document/9026521/authors#authors) to see the paper I wrote.）
 
-## 設定方法
+## 設定方法(How to set up)
 
 * [ndnSIM](https://ndnsim.net/current/)をインストール(Install [ndnSIM](https://ndnsim.net/current/))
 
